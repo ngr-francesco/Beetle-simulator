@@ -4,3 +4,4 @@
 
 TODO:
 - Make stuff move
+- Swap to a better visualization tool (pygame?)
