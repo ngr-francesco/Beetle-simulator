@@ -257,7 +257,7 @@ class Segment(HemiPlane):
 
 
 class Ray:
-    def __init__(self, angle: float, origin: Vec2 = Vec2(0, 0), length: int = 10000):
+    def __init__(self, angle: float, origin: Vec2 = Vec2(0, 0), length: float = 10000):
         self.angle = angle
         self.origin = origin
         self.length = length
