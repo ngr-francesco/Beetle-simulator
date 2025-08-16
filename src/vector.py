@@ -23,7 +23,7 @@ class Vec2:
 
     def __truediv__(self, k: float) -> "Vec2":
         return Vec2(self.x / k, self.y / k)
-    
+
     def _matmul(self, matrix: "RotationMatrix"):
         return Vec2(self.dot(matrix.first), self.dot(matrix.second))
 
@@ -38,12 +38,15 @@ class Vec2:
 
     def dot(self, other: "Vec2"):
         return self.x * other.x + self.y * other.y
-    
+
     def tolist(self):
         return [self.x, self.y]
-    
+
     def rotate(self, angle_rad: float):
-        matrix = RotationMatrix(Vec2(np.cos(angle_rad), np.sin(angle_rad)), Vec2(-np.sin(angle_rad), np.cos(angle_rad)))
+        matrix = RotationMatrix(
+            Vec2(np.cos(angle_rad), np.sin(angle_rad)),
+            Vec2(-np.sin(angle_rad), np.cos(angle_rad)),
+        )
         return self._matmul(matrix)
 
 
@@ -52,9 +55,10 @@ class RotationMatrix:
     first: Vec2
     second: Vec2
 
+
 ROTATIONS = {
-    90: RotationMatrix(Vec2(0,1),Vec2(-1,0)),
-    180: RotationMatrix(Vec2(-1,0),Vec2(0,-1)),
-    270: RotationMatrix(Vec2(0,-1),Vec2(1,0)),
-    360: RotationMatrix(Vec2(1,0),Vec2(0,1))
+    90: RotationMatrix(Vec2(0, 1), Vec2(-1, 0)),
+    180: RotationMatrix(Vec2(-1, 0), Vec2(0, -1)),
+    270: RotationMatrix(Vec2(0, -1), Vec2(1, 0)),
+    360: RotationMatrix(Vec2(1, 0), Vec2(0, 1)),
 }
