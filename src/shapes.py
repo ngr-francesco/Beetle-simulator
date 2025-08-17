@@ -1,16 +1,42 @@
 from matplotlib.axes import Axes
-from typing import List, Set
+from typing import List, Set, TypeAlias
 import numpy as np
 from src.vector import Vec2, EPSILON
 from dataclasses import dataclass, field
 
-INFTY = 10
+ObjectId: TypeAlias = int
+
+
+def calculate_collisions(polygon: "Polygon", directions: List[Vec2]):
+    max_distance = None
+    for shape in ShapeContainer.instance():
+        if not shape.can_collide:
+            continue
+        for vertex, direction in zip(polygon.vertices, directions):
+            is_hit, distance = shape.collision(vertex, direction)
+            if distance and (max_distance is None or distance > max_distance):
+                max_distance = distance
+    return max_distance
+
+
+def calculate_translation_collisions(polygon: "Polygon", direction: Vec2):
+    return calculate_collisions(polygon, [direction for _ in polygon.vertices])
+
+
+def calculate_rotation_collisions(polygon: "Polygon", rotation_angle: float):
+    return calculate_collisions(
+        polygon,
+        [
+            (vertex - polygon.center)
+            .rotate(np.pi / 2 * np.sign(rotation_angle))
+            .normalized()
+            for vertex in polygon.vertices
+        ],
+    )
 
 
 def clockwise_sort(vec: Vec2):
-    angle = np.arctan(vec.y / (vec.x + EPSILON)) + np.pi / 2
-    if vec.x < 0:
-        angle += np.pi
+    angle = np.arctan2(vec.y, (vec.x + EPSILON)) + np.pi
     return angle
 
 
@@ -50,8 +76,7 @@ class Shape:
 
     def __init__(self):
         Shape.shape_id += 1
-        if ShapeContainer._instance is not None:
-            ShapeContainer._instance.add(self)
+        ShapeContainer.instance().add(self)
 
     def draw(self, axes: Axes):
         raise NotImplementedError
@@ -59,15 +84,20 @@ class Shape:
     def compute_fig_points(self):
         raise NotImplementedError
 
+    def collision(self, pos: Vec2, direction: Vec2):
+        raise NotImplementedError
+
 
 @dataclass
 class Polygon(Shape):
     """
-    Class for generic polygons. 
+    Class for generic polygons.
     It offloads collision detection and drawing to its edges,
     so it doesn't need explicit implementations for either of these functionalities.
     In practice, it is just a container for edges (Segments).
     """
+
+    can_collide = True
     # Not required for all polygons
     vertices: list[Vec2] = field(default_factory=list)
     edges: list["Segment"] = field(init=False)
@@ -106,6 +136,13 @@ class Polygon(Shape):
             displ = rotated - c_to_v
             new_vertices.append(vertex + displ)
         self.vertices = new_vertices
+
+    def collision(self, pos: Vec2, direction: Vec2):
+        """Use ray casting in the direction opposite from the incoming object"""
+        ray = Ray(-np.atan2(direction.y, direction.x), pos)
+        print("ray angle", ray.angle)
+        distance, collisions = ray.count_polygon_collisions(self)
+        return bool(collisions % 2), distance
 
 
 @dataclass(kw_only=True)
@@ -159,9 +196,6 @@ class Rectangle(Polygon):
             ]
         Polygon.__post_init__(self)
 
-    def collision(self, x: int, y: int):
-        return all([x > self.x, x < self.x + self.w, y > self.y, y < self.y + self.h])
-
     def rotate(self, angle: float):
         super().rotate(angle)
         self.x = self.vertices[0].x
@@ -213,8 +247,8 @@ class HemiPlane(Shape):
             [
                 [self.p0.x, self.p0.y],
                 [
-                    INFTY * self.direction.x + self.p0.x,
-                    INFTY * self.direction.y + self.p0.y,
+                    1 * self.direction.x + self.p0.x,
+                    1 * self.direction.y + self.p0.y,
                 ],
             ]
         )
@@ -222,9 +256,11 @@ class HemiPlane(Shape):
     def draw(self, axes: Axes):
         axes.axline(*self.fig_points)
 
-    def collision(self, point: Vec2):
-        # You check the dot product with the normal to the line.
-        return (self.normal.dot(point - self.p0)) <= 0
+    def collision(self, pos: Vec2, direction: Vec2):
+        """Use ray casting in the direction opposite from the incoming object"""
+        ray = Ray(-np.atan2(direction.y, direction.x), pos)
+        distance = ray.collide(self)
+        return bool(distance), distance
 
     def rotate(self, angle: float):
         self.direction = self.direction.rotate(angle)
@@ -265,8 +301,10 @@ class Ray:
         self._draw_point = 0
         self.collisions = {
             HemiPlane: self.collides_line,
-            Polygon: self.collides_polygon,
             Segment: self.collides_segment,
+            Polygon: self.collides_polygon,
+            RandomPolygon: self.collides_polygon,
+            Rectangle: self.collides_polygon,
         }
 
     def at(self, coordinate: float):
@@ -280,7 +318,9 @@ class Ray:
         if np.abs(determinant) < EPSILON:
             return None
         t = (hemiplane.p0 - self.origin).dot(hemiplane.normal) / determinant
-        if t < EPSILON or t > self.length:
+        # Here use zero: if on the line -> collision
+        # Cover
+        if t < 0 or t > self.length:
             return None
         return t
 
@@ -291,23 +331,33 @@ class Ray:
 
         hit_point = self.at(t)
         proj = (hit_point - segment.p0).dot(segment.direction)
-        if proj < 0 - EPSILON or proj > segment.length + EPSILON:
+        if proj < -EPSILON or proj > segment.length + EPSILON:
             return None
         return t
 
     def collides_polygon(self, polygon: Polygon):
+        min_t, _ = self.count_polygon_collisions(polygon)
+        return min_t
+
+    def count_polygon_collisions(self, polygon: Polygon):
+        """
+        The more general collision algorithm.
+        The typical collision will just ignore the n_collisions value.
+        """
         min_t = None
+        n_collisions = 0
         for edge in polygon.edges:
             t = self.collides_segment(edge)
-            if t is not None and (min_t is None or t < min_t):
-                min_t = t
-        return min_t
+            if t is not None:
+                n_collisions += 1
+                if min_t is None or t < min_t:
+                    min_t = t
+        return min_t, n_collisions
 
     def collide(self, shape: Shape):
         if not shape.can_collide:
             return None
-        try:   
-            print(type(shape), type(shape) in self.collisions)
+        try:
             return self.collisions[type(shape)](shape)
         except KeyError:
             raise NotImplementedError(
@@ -327,6 +377,14 @@ class ShapeContainer:
     def __init__(self):
         self.shapes: dict[int, Shape] = {}
 
+    @staticmethod
+    def instance() -> "ShapeContainer":
+        if ShapeContainer._instance is None:
+            raise AttributeError(
+                "ShapeContainer was not initialized, cannot retrieve instance."
+            )
+        return ShapeContainer._instance
+
     def draw(self, axes: Axes):
         for shape in self.shapes.values():
             shape.draw(axes)
@@ -345,8 +403,18 @@ class ShapeContainer:
     def __len__(self):
         return len(self.shapes)
 
-    def remove(self, shape_id):
+    def remove_from_id(self, shape_id: ObjectId):
         self.shapes.pop(shape_id)
+
+    def remove_shape(self, shape: Shape):
+        obj_id = [key for key, value in self.shapes.items() if value == shape]
+        if len(obj_id) == 1:
+            self.shapes.pop(obj_id[0])
+        else:
+            raise KeyError(
+                f"Shape was either not found, or duplicates were found."
+                f" Found keys: {obj_id}"
+            )
 
     def clear(self):
         self.shapes = {}

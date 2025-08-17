@@ -12,6 +12,7 @@ from src.shapes import (
 )
 from src.robot_components import Robot
 
+
 def draw():
     fig = plt.figure(1)
     ax = fig.add_subplot(111)
@@ -31,7 +32,7 @@ for k in range(1):
     robot.rotate(np.pi)
     robot.scan(visualize=True)
     draw()
-    robot.move(Vec2(-1,0),speed=20)
+    robot.move(Vec2(-1, 0), speed=20)
     robot.scan(visualize=True)
     draw()
     all_shapes.clear()

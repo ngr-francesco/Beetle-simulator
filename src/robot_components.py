@@ -12,14 +12,12 @@ class UltrasonicSensor:
         self.max_depth = max_depth
 
     def scan(self, origin: Vec2, offset_angle: float = 0, visualize: bool = False):
-        if ShapeContainer._instance is None:
-            raise RuntimeError("No ShapeContainer found. Couldn't scan environment.")
         distances = []
         for k in range(self.point_density + 1):
             angle = np.pi * k / self.point_density + offset_angle
             ray = Ray(angle, origin, length=self.max_depth)
             cur_collision = self.max_depth
-            for shape in ShapeContainer._instance:
+            for shape in ShapeContainer.instance():
                 collision = ray.collide(shape)
                 if collision and collision < cur_collision:
                     cur_collision = collision
@@ -33,18 +31,16 @@ class UltrasonicSensor:
 
 
 class Robot:
-    def __init__(self, origin: Vec2= Vec2(0,0)):
+    def __init__(self, origin: Vec2 = Vec2(0, 0)):
         self.position = origin
         self.rotation = 0.0
         self.ultrasonic_sensor = UltrasonicSensor(DEFAULT_POINT_DENSITY, MAX_DEPTH)
-    
-    def scan(self, visualize:bool = False):
+
+    def scan(self, visualize: bool = False):
         self.ultrasonic_sensor.scan(self.position, self.rotation, visualize)
-    
 
     def rotate(self, angle: float):
         self.rotation += angle
 
-
     def move(self, direction: Vec2, speed: float):
-        self.position += direction.normalized()*speed
+        self.position += direction.normalized() * speed
